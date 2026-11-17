@@ -1,0 +1,20 @@
+# Solo en la EC2: manda los logs de la API y del worker a CloudWatch Logs.
+# Quien escribe en CloudWatch es Docker (en la EC2, no en el contenedor), con el rol LabInstanceProfile.
+# Se activa agregando al .env de la EC2 la línea  COMPOSE_FILE=compose.yaml:compose.aws.yaml
+services:
+  api:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-1
+        awslogs-group: /ity1102/l11
+        awslogs-create-group: "true"
+        awslogs-stream: api
+  worker:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-1
+        awslogs-group: /ity1102/l11
+        awslogs-create-group: "true"
+        awslogs-stream: worker

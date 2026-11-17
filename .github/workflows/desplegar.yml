@@ -1,0 +1,71 @@
+# prueba → construir → desplegar. Si una prueba falla, no se publica imagen y el servidor no se toca.
+name: desplegar
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'ep3' ]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  prueba:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements-dev.txt
+
+      - run: pytest -v
+
+  construir:
+    needs: prueba
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: entrar al registro
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: construir y publicar
+        run: |
+          IMAGEN=ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          docker build -t "$IMAGEN:${{ github.sha }}" -t "$IMAGEN:latest" .
+          docker push "$IMAGEN:${{ github.sha }}"
+          docker push "$IMAGEN:latest"
+          if [ "${{ github.ref_name }}" = "ep3" ]; then
+            docker tag "$IMAGEN:${{ github.sha }}" "$IMAGEN:ep3"
+            docker push "$IMAGEN:ep3"
+          fi
+
+  desplegar:
+    needs: construir
+    runs-on: ubuntu-latest
+    steps:
+      - name: entrar por SSH y actualizar el sistema
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/${{ github.event.repository.name }}
+            git fetch --tags origin && git checkout --quiet ${{ github.sha }}
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ secrets.GHCR_USUARIO }} --password-stdin
+            IMAGEN=ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+            # La imagen y el tag quedan escritos en el .env del servidor: así cualquier docker compose
+            # que escribas después a mano usa la misma imagen que desplegó el pipeline.
+            # Volver atrás es cambiar TAG por el sha anterior y docker compose up -d.
+            sed -i "s|^IMAGEN=.*|IMAGEN=$IMAGEN|; s|^TAG=.*|TAG=${{ github.sha }}|" .env
+            docker compose pull api worker
+            docker compose up -d
+            docker image prune -f
+            docker compose ps

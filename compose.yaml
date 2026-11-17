@@ -1,0 +1,80 @@
+# Las cinco piezas del sistema de EP3 que no son SageMaker. Solo Caddy publica puertos hacia afuera.
+# Los valores ${...} salen del archivo .env que está al lado (copia de .env.example, nunca en Git).
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_datos:/data          # el certificado: si se pierde, Let's Encrypt lo emite de nuevo
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  api:
+    image: ${IMAGEN:-ity1102-l11}:${TAG:-latest}
+    build: .
+    environment:
+      CASO: ${CASO:-rfm}
+      ENDPOINT: ${ENDPOINT:-}
+      UMBRAL: ${UMBRAL:-0.5}
+      API_KEYS: ${API_KEYS:?falta API_KEYS en .env}
+      LIMITE_POR_MINUTO: ${LIMITE_POR_MINUTO:-60}
+      AWS_DEFAULT_REGION: us-east-1
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/%2F
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    image: ${IMAGEN:-ity1102-l11}:${TAG:-latest}
+    command: ["python", "-m", "app.worker"]
+    environment:
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:?falta NVIDIA_MODEL en .env}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/%2F
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    ports:
+      - "127.0.0.1:15672:15672"   # la consola web, solo desde la misma máquina (o por túnel SSH)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - cola:/var/lib/rabbitmq
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    volumes:
+      - datos:/data
+    restart: unless-stopped
+
+volumes:
+  caddy_datos:
+  cola:
+  datos:

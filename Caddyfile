@@ -1,0 +1,17 @@
+# Caddy pide y renueva solo el certificado de Let's Encrypt para el nombre de DOMINIO.
+# En la EC2, DOMINIO es <tu-ip-con-guiones>.sslip.io. En tu computador, localhost.
+{$DOMINIO} {
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle /docs* {
+		reverse_proxy api:8000
+	}
+	handle /openapi.json {
+		reverse_proxy api:8000
+	}
+	# En EP3, aquí va tu front: reverse_proxy front:80
+	handle {
+		respond "L11 funcionando. La API está en /docs" 200
+	}
+}
