@@ -1,8 +1,12 @@
 """Quita los datos personales de un texto antes de que salga hacia NVIDIA.
 
-El orden importa: la tarjeta va antes que el teléfono y el RUT, porque sus 16 dígitos contienen
-secuencias que también parecen un teléfono o un RUT. Si se enmascara primero el teléfono, quedan
-dígitos sueltos de la tarjeta en el texto.
+El orden importa en un punto: el correo va primero. Si la tarjeta o el teléfono corrieran antes, un
+correo como ana1234567890123@correo.cl quedaría «ana[TARJETA]@correo.cl» y el dominio seguiría a la
+vista. Entre tarjeta, RUT y teléfono no hay choque: los (?<!\d) y (?!\d) impiden que un patrón tome
+dígitos sueltos de otro número más largo.
+
+No detecta nombres ni direcciones: eso no se resuelve con una expresión regular. En el caso 2 hay que
+resolverlo de otra forma (por ejemplo, no mandar al LLM los campos de nombre y dirección).
 """
 import re
 
